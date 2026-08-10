@@ -74,8 +74,11 @@ class SoundBoardApp:
         self.root.minsize(520, 420)
         self.root.resizable(True, True)
 
-        # Папка со звуками — по умолчанию там же, где лежит скрипт
-        self.sound_dir = Path(sound_dir or os.path.dirname(os.path.abspath(__file__)))
+        # По умолчанию ищем в папке, из которой запустили программу. Это
+        # соответствует команде из README: `cd /папка/со/звуками` → запуск.
+        # Раньше здесь использовалась папка самого скрипта, поэтому при запуске
+        # `python /путь/к/soundboard.py` файлы из текущей папки игнорировались.
+        self.sound_dir = Path(sound_dir).expanduser().resolve() if sound_dir else Path.cwd().resolve()
 
         # Глобальные переменные
         self.prob_num = tk.IntVar(value=1)
@@ -329,11 +332,20 @@ class SoundBoardApp:
         self.sounds.clear()
         self.sound_rows.clear()
 
-        # Поиск файлов
+        # Показываем путь даже если в нём не оказалось подходящих файлов.
+        self.dir_label.configure(text=str(self.sound_dir))
+
+        # Поиск файлов в самой папке (подпапки намеренно не сканируются).
+        # Не прерываем интерфейс, если папка стала недоступна после запуска.
         found: list[Path] = []
-        for p in sorted(self.sound_dir.iterdir()):
-            if p.is_file() and p.suffix.lower() in SOUND_EXTENSIONS:
-                found.append(p)
+        try:
+            for p in sorted(self.sound_dir.iterdir()):
+                if p.is_file() and p.suffix.lower() in SOUND_EXTENSIONS:
+                    found.append(p)
+        except OSError as exc:
+            self.count_label.configure(text="Звуки: 0")
+            self.status_var.set(f"⚠ Не удалось открыть папку: {exc}")
+            return
 
         if not found:
             no_lbl = ttk.Label(
@@ -352,7 +364,6 @@ class SoundBoardApp:
             self.sounds.append(item)
             self._add_sound_row(item, len(self.sounds) - 1)
 
-        self.dir_label.configure(text=str(self.sound_dir))
         self.count_label.configure(text=f"Звуки: {len(self.sounds)}")
         self.status_var.set(f"Загружено {len(self.sounds)} звуков")
 
