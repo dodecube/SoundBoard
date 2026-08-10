@@ -1,0 +1,74 @@
+name: Build SoundBoard
+
+on:
+  push:
+    branches: [master, "arena/**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: SoundBoard
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: SoundBoard-windows
+            archive: SoundBoard-windows.zip
+          - os: ubuntu-latest
+            artifact: SoundBoard-linux
+            archive: SoundBoard-linux.tar.gz
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt pyinstaller
+
+      - name: Build executable
+        shell: bash
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "$APP_NAME" soundboard.py
+          mkdir -p "dist/$APP_NAME/sounds"
+          cp -- *.wav "dist/$APP_NAME/sounds/"
+          cp README.md "dist/$APP_NAME/"
+
+      - name: Create Windows archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "dist/${{ env.APP_NAME }}" -DestinationPath "${{ matrix.archive }}"
+
+      - name: Create Linux archive
+        if: runner.os == 'Linux'
+        run: tar -czf "${{ matrix.archive }}" -C dist "$APP_NAME"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach archive to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.archive }}
+          generate_release_notes: true
